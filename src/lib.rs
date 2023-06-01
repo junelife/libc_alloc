@@ -19,7 +19,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::ffi::c_void;
 use core::ptr;
 
-#[cfg(target_family = "unix")]
+#[cfg(any(target_family = "unix", target_family = "none"))]
 mod libc;
 
 #[cfg(target_family = "windows")]
@@ -28,7 +28,7 @@ mod win_crt;
 /// Global Allocator which hooks into libc to allocate / free memory.
 pub struct LibcAlloc;
 
-#[cfg(target_family = "unix")]
+#[cfg(any(target_family = "unix", target_family = "none"))]
 unsafe impl GlobalAlloc for LibcAlloc {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
