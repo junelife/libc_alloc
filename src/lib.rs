@@ -19,6 +19,41 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::ffi::c_void;
 use core::ptr;
 
+// The minimum alignment guaranteed by the architecture. This value is used to
+// add fast paths for low alignment values.
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "arm",
+    target_arch = "m68k",
+    target_arch = "mips",
+    target_arch = "powerpc",
+    target_arch = "powerpc64",
+    target_arch = "sparc",
+    target_arch = "asmjs",
+    target_arch = "wasm32",
+    target_arch = "hexagon",
+    all(target_arch = "riscv32", not(target_os = "espidf")),
+    all(target_arch = "xtensa", not(target_os = "espidf")),
+))]
+pub const MIN_ALIGN: usize = 8;
+#[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "loongarch64",
+    target_arch = "mips64",
+    target_arch = "s390x",
+    target_arch = "sparc64",
+    target_arch = "riscv64",
+    target_arch = "wasm64",
+))]
+pub const MIN_ALIGN: usize = 16;
+// The allocator on the esp-idf platform guarantees 4 byte alignment.
+#[cfg(any(
+    all(target_arch = "riscv32", target_os = "espidf"),
+    all(target_arch = "xtensa", target_os = "espidf"),
+))]
+pub const MIN_ALIGN: usize = 4;
+
 #[cfg(any(target_family = "unix", target_family = "none"))]
 mod libc;
 
@@ -62,9 +97,32 @@ unsafe impl GlobalAlloc for LibcAlloc {
     }
 
     #[inline]
-    unsafe fn realloc(&self, ptr: *mut u8, _layout: Layout, new_size: usize) -> *mut u8 {
-        libc::realloc(ptr as *mut c_void, new_size) as *mut u8
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        // check layout, and if it requires stricter alignment, fallback to alloc + copy + free.
+        if layout.align() <= MIN_ALIGN && layout.align() <= new_size {
+            libc::realloc(ptr as *mut c_void, new_size) as *mut u8
+        } else {
+            realloc_fallback(self, ptr, layout, new_size)
+        }
     }
+}
+
+#[cfg(any(target_family = "unix", target_family = "none"))]
+pub unsafe fn realloc_fallback(
+    alloc: &LibcAlloc,
+    ptr: *mut u8,
+    old_layout: Layout,
+    new_size: usize,
+) -> *mut u8 {
+    let new_layout = Layout::from_size_align_unchecked(new_size, old_layout.align());
+
+    let new_ptr = alloc.alloc(new_layout);
+    if !new_ptr.is_null() {
+        let size = core::cmp::min(old_layout.size(), new_size);
+        ptr::copy_nonoverlapping(ptr, new_ptr, size);
+        alloc.dealloc(ptr, old_layout);
+    }
+    new_ptr
 }
 
 #[cfg(target_family = "windows")]
