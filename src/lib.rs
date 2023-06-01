@@ -54,7 +54,7 @@ pub const MIN_ALIGN: usize = 16;
 ))]
 pub const MIN_ALIGN: usize = 4;
 
-#[cfg(any(target_family = "unix", target_family = "none"))]
+#[cfg(any(target_family = "unix", target_os = "none"))]
 mod libc;
 
 #[cfg(target_family = "windows")]
@@ -63,7 +63,7 @@ mod win_crt;
 /// Global Allocator which hooks into libc to allocate / free memory.
 pub struct LibcAlloc;
 
-#[cfg(any(target_family = "unix", target_family = "none"))]
+#[cfg(any(target_family = "unix", target_os = "none"))]
 unsafe impl GlobalAlloc for LibcAlloc {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -107,7 +107,7 @@ unsafe impl GlobalAlloc for LibcAlloc {
     }
 }
 
-#[cfg(any(target_family = "unix", target_family = "none"))]
+#[cfg(any(target_family = "unix", target_os = "none"))]
 pub unsafe fn realloc_fallback(
     alloc: &LibcAlloc,
     ptr: *mut u8,
